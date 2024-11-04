@@ -99,6 +99,8 @@
                 "STM32WL",
                 "STM32WLxx",
                 "STM32WLE5xx",
+                "PIN_SERIAL_RX=PB7",
+                "PIN_SERIAL_TX=PB6",
                 "STM32WLxx",
                 "ARDUINO=10808",
                 "ARDUINO_ARCH_STM32",

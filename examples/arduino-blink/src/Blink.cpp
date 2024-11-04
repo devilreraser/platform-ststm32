@@ -11,8 +11,11 @@
 #include <queue.h>
 #include <semphr.h>
 
+#include "stm32wlxx_hal.h"
+#include "stm32wlxx_hal_subghz.h"
+// Sub-GHz handle
+SUBGHZ_HandleTypeDef hsubghz;
 
-HardwareSerial Serial1(PB7, PB6); // RX, TX pins
 
 #define LED_RED PA9
 
@@ -20,10 +23,9 @@ HardwareSerial Serial1(PB7, PB6); // RX, TX pins
 QueueHandle_t uartQueue;
 SemaphoreHandle_t uartSemaphore;
 
-
 // Custom printf function that uses the semaphore for thread-safe access
 void serial_printf(const char *format, ...) {
-    // Wait for semaphore before accessing Serial1
+    // Wait for semaphore before accessing Serial
     if (xSemaphoreTake(uartSemaphore, portMAX_DELAY) == pdTRUE) {
         char buffer[128];  // Buffer to hold the formatted string
         va_list args;
@@ -31,7 +33,7 @@ void serial_printf(const char *format, ...) {
         vsnprintf(buffer, sizeof(buffer), format, args);
         va_end(args);
 
-        Serial1.print(buffer);  // Send the formatted string to Serial1
+        Serial.print(buffer);  // Send the formatted string to Serial
 
         // Release the semaphore after printing
         xSemaphoreGive(uartSemaphore);
@@ -71,21 +73,32 @@ void printTask(void *pvParameters) {
 
 void setup()
 {
-    Serial1.begin(115200);
-    while (!Serial1);      // Wait for Serial to initialize
-    Serial1.println("UART Initialized.");
+    // HAL initialization
+    HAL_Init();
+    SystemClock_Config();
+   // Enable the Sub-GHz radio
+    __HAL_RCC_SUBGHZSPI_CLK_ENABLE();
+
+    // Initialize the Sub-GHz radio
+    HAL_SUBGHZ_Init(&hsubghz);
+
+
+
+    Serial.begin(115200);
+    while (!Serial);      // Wait for Serial to initialize
+    Serial.println("UART Initialized.");
 
     // Create the semaphore for UART access
     uartSemaphore = xSemaphoreCreateMutex();
     if (uartSemaphore == NULL) {
-        Serial1.println("Error creating semaphore.");
+        Serial.println("Error creating semaphore.");
         while (1);  // Halt if semaphore creation fails
     }
 
     // Initialize the queue to hold pointers to data buffers
     uartQueue = xQueueCreate(10, sizeof(char*));  // Queue holds up to 10 pointers
     if (uartQueue == NULL) {
-        Serial1.println("Error creating queue.");
+        Serial.println("Error creating queue.");
         while (1);  // Halt if queue creation fails
     }
 
@@ -100,7 +113,7 @@ void setup()
 void loop()
 {
     // Count the number of available bytes
-    int availableBytes = Serial1.available();
+    int availableBytes = Serial.available();
 
     // If there's no data, skip allocation
     if (availableBytes > 0) {
@@ -108,7 +121,7 @@ void loop()
         char* buffer = (char*) pvPortMalloc((availableBytes + 1) * sizeof(char));
         if (buffer == NULL) {
             if (xSemaphoreTake(uartSemaphore, portMAX_DELAY) == pdTRUE) {
-                Serial1.println("Memory allocation failed.");
+                Serial.println("Memory allocation failed.");
                 xSemaphoreGive(uartSemaphore);
             }
             delay(1000);  // Wait a second before retrying
@@ -117,7 +130,7 @@ void loop()
 
         // Read the available data into the allocated buffer
         for (int i = 0; i < availableBytes; i++) {
-            buffer[i] = Serial1.read();
+            buffer[i] = Serial.read();
         }
 
         // Null-terminate the string
@@ -131,13 +144,21 @@ void loop()
     }
 
     // Wait for one second before reading the next batch of data
+    //vTaskDelay(pdMS_TO_TICKS(5000));
     delay(1000);
 
-    // Use semaphore to make Serial1 output thread-safe
+
+    // Use semaphore to make Serial output thread-safe
     if (xSemaphoreTake(uartSemaphore, portMAX_DELAY) == pdTRUE) {
-        Serial1.print("Loop: ");
-        Serial1.print(millis());  // Print elapsed time in milliseconds
-        Serial1.println(" ms");   // Print elapsed time in milliseconds
+        Serial.print("Loop: ");
+        Serial.print(millis());  // Print elapsed time in milliseconds
+        Serial.println(" ms");
+        Serial.print("portTICK_PERIOD_MS: ");
+        Serial.println(portTICK_PERIOD_MS);  
+        Serial.print("configTICK_RATE_HZ: ");
+        Serial.println(configTICK_RATE_HZ);  
+        Serial.print("configCPU_CLOCK_HZ: ");
+        Serial.println(configCPU_CLOCK_HZ);  
         xSemaphoreGive(uartSemaphore);
     }
 }
